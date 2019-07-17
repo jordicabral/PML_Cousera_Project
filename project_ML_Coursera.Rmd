@@ -1,0 +1,149 @@
+---
+title: "Practical Machine Learning Coursera - Final Project"
+author: "Jordi Cabral Arias"
+date: "`r format(Sys.Date(),'%e de %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NULL, cache = TRUE)
+```
+
+## Environment Preparation
+### Libraries
+```{r libraries, message=FALSE, warning=FALSE}
+library(caret)
+library(rattle)
+library(rpart)
+library(randomForest)
+```
+### Downloading Data
+```{r}
+url_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(url_train, destfile = "pml-training.csv")
+download.file(url_test, destfile = "pml-testing.csv")
+```
+
+### Loading Data
+```{r}
+data_train <- read.csv("pml-training.csv", header = TRUE)
+data_validation <- read.csv("pml-testing.csv", header = TRUE)
+```
+
+### Exploring data
+```{r}
+dim(data_train)
+dim(data_validation)
+
+str(data_train)
+```
+
+### Cleaning data
+#### We can remove columns variables that contain missing values.
+```{r}
+data_train_clean <- data_train[, colSums(is.na(data_train)) == 0]
+data_validation_clean <- data_validation[, colSums(is.na(data_validation)) == 0]
+```
+
+#### We can remove also the first seven variables as there are description about individuals
+```{r}
+data_train_clean <- data_train_clean[, -c(1:7)]
+data_validation_clean <- data_validation_clean[, -c(1:7)]
+
+dim(data_train_clean)
+dim(data_validation_clean)
+
+str(data_train_clean)
+str(data_validation_clean)
+```
+
+### Data spliting
+#### In order to get out-of-sample errors, we split the cleaned dataset into a training dataset (70%) for prediction and testing dataset (30%) for validation.
+```{r}
+set.seed(12345)
+training_sample <- createDataPartition(data_train_clean$classe, p=0.7, list=FALSE)
+training <- data_train_clean[training_sample, ]
+testing <- data_train_clean[-training_sample, ]
+```
+
+#### Deleting also variables with near-zero-variance
+```{r}
+nzv_col <- nearZeroVar(training)
+training <- training[, -nzv_col]
+testing <- testing[, -nzv_col]
+
+
+dim(training)
+dim(testing)
+```
+
+# Prediction Algorithms
+## Classification Tree
+#### We can start with classification tree, with cross-validation method with 5 folds
+```{r}
+control <- trainControl(method = "cv", number = 3)
+set.seed(12345)
+model_ct <- train(classe ~., method="rpart", data=training, trControl = control)
+```
+
+### Showing model
+```{r}
+fancyRpartPlot(model_ct$finalModel)
+```
+
+### Evaluating performance
+```{r}
+pred_ct <- predict(model_ct, testing)
+confusionMatrix(testing$classe, pred_ct)
+```
+
+## Random Forests Model
+```{r}
+set.seed(12345)
+model_rf <- randomForest(classe ~., data=training)
+```
+
+### Showing model
+```{r}
+model_rf
+plot(model_rf)
+```
+
+#### The behavior is fairly stable from approximately 50 trees.
+### Visualizing the importance of the variables.
+```{r}
+importance(model_rf)
+varImpPlot(model_rf)
+```
+
+#### We observe for example that "roll_belt" variable is the most important in the model.
+### Evaluating performance
+```{r}
+pred_rf <- predict(model_rf, testing)
+confusionMatrix(testing$classe, pred_rf)
+```
+
+## GBM (Boosting with trees)
+```{r}
+set.seed(12345)
+model_gbm <- train(classe ~., data=training, method="gbm", trControl=control, verbose=FALSE)
+```
+
+### Evaluating the model
+```{r}
+pred_gbm <- predict(model_gbm, testing)
+confusionMatrix(testing$classe, pred_gbm)
+```
+
+
+# Conclusion
+#### Random Forest algorithm has the best performance, both of "accuracy" and "kappa" parameter.
+#### This algorithm combines the generally good performance of "classification tree" algorithm, along with the "bagging" techniques (bootstrap aggregating), and behaves well in most problems, with different types and number of variables, with no need to variables transformation.
+#### By cons, the model is not easily interpretable.
+
+# Prediction of 20 new test cases
+```{r}
+(predict(model_rf, data_validation_clean))
+```
